@@ -226,7 +226,9 @@ void ControlLoop::simulate() {
 
     // Compute the next pose
     VectorXd s = xi - psi;
-    std::cout << "s norm: " << s.norm() << std::endl;
+    if (i % 100 == 0){
+      std::cout << "s norm: " << s.norm() << std::endl;
+    }
 
     // First step of Heun -- Euler method
     auto [ddq, do_hat, dr_hat] =
@@ -293,11 +295,11 @@ void ControlLoop::simulate() {
       norm_da(j) = do_hat[j].norm();
       norm_dr(j) = dr_hat[j].norm();
     }
-    std::cout << "Error a norm: " << error_a.norm()
-              << ".  Error r norm: " << error_r.norm()
-              << ".  Norm da: " << norm_da.norm()
-              << ".  Norm dr: " << norm_dr.norm() << std::endl;
-
+    // std::cout << "Error a norm: " << error_a.norm()
+    //           << ".  Error r norm: " << error_r.norm()
+    //           << ".  Norm da: " << norm_da.norm()
+    //           << ".  Norm dr: " << norm_dr.norm() << std::endl;
+    //
     // Log data
     H_hist.push_back(H);
     xi_hist.push_back(xi);
