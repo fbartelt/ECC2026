@@ -7,7 +7,7 @@
 #include <vector>
 
 using namespace Eigen;
-void printProgressBar(int current, int imax) {
+void printProgressBar2(int current, int imax) {
   // Calculate percentage
   int percent = static_cast<int>(100.0 * current / imax);
 
@@ -24,7 +24,7 @@ void printProgressBar(int current, int imax) {
   std::cout.flush(); // Ensure the output is immediately printed
 }
 
-Eigen::Matrix3d skew(const Eigen::Vector3d &q) {
+Eigen::Matrix3d skew2(const Eigen::Vector3d &q) {
   Eigen::Matrix3d skewMatrix;
   skewMatrix << 0, -q(2), q(1), q(2), 0, -q(0), -q(1), q(0), 0;
   return skewMatrix;
@@ -103,17 +103,17 @@ AdaptiveController::adaptiveDynamics(const MatrixXd &p, const MatrixXd &R,
   MatrixXd Y_o_l(3, 10);
   Y_o_l.block<3, 1>(0, 0) = v_dot_r;
   Y_o_l.block<3, 3>(0, 1) =
-      -skew(omega_dot_r) * R - skew(omega) * skew(omega_r) * R;
+      -skew2(omega_dot_r) * R - skew2(omega) * skew2(omega_r) * R;
   Y_o_l.block<3, 6>(0, 4) = MatrixXd::Zero(3, 6);
 
   MatrixXd R_transpose = R.transpose().eval();
 
   MatrixXd Y_o_r(3, 10);
   Y_o_r.block<3, 1>(0, 0) = MatrixXd::Zero(3, 1); // First column is zero
-  Y_o_r.block<3, 3>(0, 1) = skew(v_dot_r) * R + skew(omega) * skew(v_r) * R -
-                            skew(omega_r) * skew(v) * R;
+  Y_o_r.block<3, 3>(0, 1) = skew2(v_dot_r) * R + skew2(omega) * skew2(v_r) * R -
+                            skew2(omega_r) * skew2(v) * R;
   Y_o_r.block<3, 6>(0, 4) = R * iota(R_transpose * omega_dot_r) +
-                            skew(omega) * R * iota(R_transpose * omega_r);
+                            skew2(omega) * R * iota(R_transpose * omega_r);
 
   MatrixXd Y_o(6, 10);
   // Concatenate Y_l and Y_r into Y_o
@@ -125,18 +125,18 @@ AdaptiveController::adaptiveDynamics(const MatrixXd &p, const MatrixXd &R,
   MatrixXd M(6, 6), C(6, 6), M_dot(6, 6);
   // Compute blocks for H
   M.block<3, 3>(0, 0) = m * Matrix3d::Identity();       // Top-left block
-  M.block<3, 3>(0, 3) = m * skew(R * r_p);              // Top-right block
-  M.block<3, 3>(3, 0) = -m * skew(R * r_p);             // Bottom-left block
+  M.block<3, 3>(0, 3) = m * skew2(R * r_p);              // Top-right block
+  M.block<3, 3>(3, 0) = -m * skew2(R * r_p);             // Bottom-left block
   M.block<3, 3>(3, 3) = R * I_p * R.transpose().eval(); // Bottom-right block
   // std::cout << "[DEBUG] Created M" << std::endl;
 
   // Compute blocks for C
   C.block<3, 3>(0, 0) = Matrix3d::Zero();                 // Top-left block
-  C.block<3, 3>(0, 3) = m * skew(omega) * skew(R * r_p);  // Top-right block
-  C.block<3, 3>(3, 0) = -m * skew(omega) * skew(R * r_p); // Bottom-left block
+  C.block<3, 3>(0, 3) = m * skew2(omega) * skew2(R * r_p);  // Top-right block
+  C.block<3, 3>(3, 0) = -m * skew2(omega) * skew2(R * r_p); // Bottom-left block
   C.block<3, 3>(3, 3) =
-      skew(omega) * R * I_p * R_transpose // Bottom-right block
-      - m * skew(skew(R * r_p) * v);
+      skew2(omega) * R * I_p * R_transpose // Bottom-right block
+      - m * skew2(skew2(R * r_p) * v);
   // std::cout << "[DEBUG] Created C" << std::endl;
   // Adaptive control law
   VectorXd input = VectorXd::Zero(6);
@@ -148,7 +148,7 @@ AdaptiveController::adaptiveDynamics(const MatrixXd &p, const MatrixXd &R,
     MatrixXd Lambda_inv(6, 6);
     Lambda_inv.block<3, 3>(0, 0) = Matrix3d::Identity();
     Lambda_inv.block<3, 3>(0, 3) = Matrix3d::Zero();
-    Lambda_inv.block<3, 3>(3, 0) = -skew(R * r_hat[i]);
+    Lambda_inv.block<3, 3>(3, 0) = -skew2(R * r_hat[i]);
     Lambda_inv.block<3, 3>(3, 3) = Matrix3d::Identity();
     // std::cout << "[DEBUG] Created Lambda_inv" << std::endl;
 
@@ -176,7 +176,7 @@ AdaptiveController::adaptiveDynamics(const MatrixXd &p, const MatrixXd &R,
 
   for (int i = 0; i < N; ++i) {
     Y_r[i].block<3, 3>(0, 0) = Matrix3d::Zero();
-    Y_r[i].block<3, 3>(3, 0) = skew(eta[i].head(3)) * R;
+    Y_r[i].block<3, 3>(3, 0) = skew2(eta[i].head(3)) * R;
     g_o[i] = Gamma_o_inv.inverse();
     g_r[i] = Gamma_r_inv.inverse();
 
@@ -205,7 +205,7 @@ void ControlLoop::simulate() {
   int N = controller.N;
 
   for (int i = 0; i < imax; ++i) {
-    printProgressBar(i, imax);
+    printProgressBar2(i, imax);
     // Extract position and orientation
     Matrix3d R = H.block<3, 3>(0, 0);
     Vector3d p = H.block<3, 1>(0, 3);
