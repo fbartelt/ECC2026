@@ -32,6 +32,7 @@ include_directories("/usr/include/eigen3")
 # Create a local C++ library from uaibot source files
 add_library(uaibot_cpp STATIC
     ${UAIBOT_DIR}/manipulator.cpp
+    ${UAIBOT_DIR}/newton_euler.cpp
     ${UAIBOT_DIR}/utils.cpp
     ${UAIBOT_DIR}/gjk.c
 )

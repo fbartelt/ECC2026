@@ -42,6 +42,7 @@ PYBIND11_MODULE(adaptive_cpp, m) {
           py::arg("kn1"), py::arg("kn2"), py::arg("delta"), py::arg("ds"),
           py::arg("deadband"), py::arg("dt"), py::arg("T"))
       .def("simulate", &ControlLoop::simulate)
+      .def_readonly("controller", &ControlLoop::controller)
       .def_readonly("H_hist", &ControlLoop::H_hist)
       .def_readonly("xi_hist", &ControlLoop::xi_hist)
       .def_readonly("xi_dot_hist", &ControlLoop::xi_dot_hist)

@@ -1,5 +1,6 @@
 # %%
 import pickle
+import time
 import uaibot as ub
 import numpy as np
 import sys
@@ -18,7 +19,7 @@ h = 1.0
 m = rho * np.pi * r**2 * h  # Mass of the cylinder in Kg
 
 # Box
-l, w, h = 0.5, 0.3, 0.2
+l, w, h = 0.5, 0.3, 0.2 # y, x, z
 m = 10.0
 print(m)
 
@@ -34,8 +35,8 @@ N = 2
 # r_i = np.array([[r * np.cos(angle), r * np.sin(angle), h / 2.0] for angle in angle_dist])
 r_i = np.array(
     [
-        [0.25, 0.15, 0.1],
-        [-0.25, -0.15, 0.1],
+        [0.15, 0.25, -0.1],
+        [-0.15, -0.25, 0.1],
     ]
 )
 r_p = r_i[0]
@@ -291,7 +292,7 @@ def progress_bar(i, imax):
 # Initial conditions
 n_points = 3000
 n_points = 2000
-r, b, d = 0.35, 1, 0.2
+r, b, d = 0.35, 0.3, 0.2
 # r, b = 0.7, 0.4
 curve = precomputed_hd(hd, n_points, r, b, d)
 curve_derivative = precomputed_hd(hd_derivative, n_points, r, b, d)
@@ -313,7 +314,7 @@ kt1, kt2, kt3 = 1.0, 1, 1.0
 # %%
 # Simulation
 dt = 1e-3
-T = 30.0
+T = 5.0#30.0
 delta = 1e-3
 ds = 1e-3
 deadband = 0.01
@@ -346,8 +347,19 @@ print(loop.closest_indexes[-10:])
 print(loop.closest_indexes[::1000])
 with open("data_adaptive.pkl", "wb") as f:
     data = {
-        "loop": loop,
-        "adaptive": adaptiveSys,
+        "H_hist": loop.H_hist,
+        "xi_hist": loop.xi_hist,
+        "xi_dot_hist": loop.xi_dot_hist,
+        "psi_hist": loop.psi_hist,
+        "o_hat_hist": loop.o_hat_hist,
+        "r_hat_hist": loop.r_hat_hist,
+        "closest_indexes": loop.closest_indexes,
+        "min_distances": loop.min_distances,
+        "zeta_hist": loop.zeta_hist,
+        "taui_hist": adaptiveSys.taui_hist,
+        "aprox_hist": adaptiveSys.aprox_hist,
+        "input_hist": adaptiveSys.input_hist,
+        "r_i": adaptiveSys.r_i,
     }
     pickle.dump(data, f)
 print("Data saved to data_adaptive.pkl")
@@ -368,8 +380,9 @@ agent1._joint_limit = np.matrix(
         [-10 * np.pi, 10 * np.pi],
     ]
 )
+grip1_htm = htm0 @ pose2htm(r_i[0], np.eye(3)) # in box frame
 q0_1 = np.array(agent1.ikm(
-    htm_tg=pose2htm(r_i[0], np.eye(3)),
+    htm_tg=grip1_htm,
     q0=np.zeros((7, 1)),
     ignore_orientation=True,
     check_joint=False,
@@ -378,33 +391,59 @@ agent1.set_ani_frame(q0_1)
 htm_base_2 = pose2htm([r_i[1, 0], r_i[1, 1], 0], np.eye(3))
 agent2 = ub.Robot.create_kinova_gen3(htm=htm_base_2)
 agent2._joint_limit = agent1._joint_limit
+grip2_htm = htm0 @ pose2htm(r_i[1], np.eye(3)) # in box frame
 q0_2 = np.array(agent2.ikm(
-    htm_tg=pose2htm(r_i[1], np.eye(3)),
+    htm_tg=grip2_htm,
     q0=np.zeros((7, 1)),
     ignore_orientation=True,
     check_joint=False,
 )).reshape(-1, 1)
 agent2.set_ani_frame(q0_2)
 
-sim = ub.Simulation.create_sim_grid([agent1, agent2, box])
+grip1 = ub.Frame(htm=grip1_htm)
+grip2 = ub.Frame(htm=grip2_htm)
+curve_pos = np.array([c[:3, 3] for c in curve])
+pointcloud_curve = ub.PointCloud(points=curve_pos.T, color="cyan", size=0.03)
+sim = ub.Simulation.create_sim_grid([agent1, agent2, box, pointcloud_curve, grip1, grip2])
 
 # Integrate manipulators + add box animation
 q1, q1_dot, q1_ddot = q0_1.copy(), np.zeros((7, 1)), np.zeros((7, 1))
 q2, q2_dot, q2_ddot = q0_2.copy(), np.zeros((7, 1)), np.zeros((7, 1))
 
+wrench_hist = loop.controller.taui_hist
+
 for i in range(n_steps):
     progress_bar(i, n_steps)
-    ith_wrenches = adaptiveSys.taui_hist
-    M1, C1_, g1 = agent1.dynamics_matrices(q1, q1_dot)
-    M2, C2_, g2 = agent2.dynamics_matrices(q2, q2_dot)
-    q1_ddot = np.linalg.inv(M1) @ (ith_wrenches[0].reshape(-1, 1) - C1_ @ q1_dot - g1)
-    q2_ddot = np.linalg.inv(M2) @ (ith_wrenches[1].reshape(-1, 1) - C2_ @ q2_dot - g2)
+    M1, C1_, g1 = agent1.dynamic_model(q1, q1_dot)
+    jac1, *_ = agent1.jac_geo(q=q1)
+    M2, C2_, g2 = agent2.dynamic_model(q2, q2_dot)
+    jac2, *_ = agent2.jac_geo(q=q2)
+    ith_wrenches = wrench_hist[i]
+    wrench1_world = ith_wrenches[0].reshape(-1, 1)
+    wrench2_world = ith_wrenches[1].reshape(-1, 1)
+    # Transform wrenches to local frame of the end-effector
+    # print(wrench1_world.shape)
+    # print(jac1.shape)
+    wrench1 = jac1.T @ wrench1_world
+    wrench2 = jac2.T @ wrench2_world
+    q1_ddot = np.linalg.inv(M1) @ (wrench1 - C1_ - g1)
+    q2_ddot = np.linalg.inv(M2) @ (wrench2 - C2_ - g2)
     q1_dot += q1_ddot * dt
     q1 += q1_dot * dt
     q2_dot += q2_ddot * dt
     q2 += q2_dot * dt
-    agent1.add_ani_frame(time=i * dt, q=q1)
-    agent2.add_ani_frame(time=i * dt, q=q2)
+    print(q1_dot.ravel(), q2_dot.ravel())
+    print(q1.ravel(), q2.ravel())
+    # If any qdot or q is nan, break
+    if np.any(np.isnan(q1)) or np.any(np.isnan(q1_dot)) or np.any(np.isnan(q2)) or np.any(
+        np.isnan(q2_dot)
+    ):
+        print("NaN detected, stopping simulation")
+        break
+    # pause for 0.5s
+    # time.sleep(0.5)
+    agent1.add_ani_frame(time=i * dt, q=q1.ravel())
+    agent2.add_ani_frame(time=i * dt, q=q2.ravel())
     box.add_ani_frame(time=i * dt, htm=loop.H_hist[i])
 
 sim.save("./", "adaptive_anim")
