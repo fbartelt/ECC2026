@@ -1,9 +1,11 @@
 # %%
+import pickle
+import time
 import uaibot as ub
 import numpy as np
 import sys
-from adaptive_cpp import AdaptiveController
-from uaibot_cpp_bind import expSO3, SmapSO3, SmapSE3, expSE3, ECdistance
+from adaptive_cpp import AdaptiveController, ControlLoop
+from uaibot_cpp_bind import expSO3, SmapSO3, SmapSE3, expSE3
 from uaibot.utils import Utils
 from scipy.linalg import block_diag
 from vfutils import vector_field_plot
@@ -15,28 +17,48 @@ h = 10e-2  # Height of the cylinder in meters
 r = 0.25
 h = 1.0
 m = rho * np.pi * r**2 * h  # Mass of the cylinder in Kg
+
+# Box
+l, w, h = 0.5, 0.3, 0.2 # y, x, z
+m = 10.0
 print(m)
 
 
 rng = np.random.default_rng(42)
-r_p = np.array([0.0, 0.0, h / 2.0])  # Measurement point
-N = 6  # Number of agents
+# r_p = np.array([0.0, 0.0, h / 2.0])  # Measurement point
+# N = 6  # Number of agents
+N = 2
 # Initial positions of the agents
-r_i = np.array([[0, 0, h / 2], [0, 0, -h / 2], [r, 0, 0], [-r, 0, 0], [0, r, 0], [0, -r, 0]])
+# r_i = np.array([[0, 0, h / 2], [0, 0, -h / 2], [r, 0, 0], [-r, 0, 0], [0, r, 0], [0, -r, 0]])
 # Radially distributed around the object
-angle_dist = np.linspace(0, 2 * np.pi, N, endpoint=False)
+# angle_dist = np.linspace(0, 2 * np.pi, N, endpoint=False)
 # r_i = np.array([[r * np.cos(angle), r * np.sin(angle), h / 2.0] for angle in angle_dist])
+r_i = np.array(
+    [
+        [0.15, 0.25, -0.1],
+        [-0.15, -0.25, 0.1],
+    ]
+)
+r_p = r_i[0]
 print(f"Agents distributed as: {r_i}")
 
-# Inertia tensor
+# # Inertia tensor (Cilinder)
+# I_cm = (1.0 / 12.0) * np.eye(3)
+# I_cm[0, 0] *= m * (3 * r**2 + h**2)
+# I_cm[1, 1] *= m * (3 * r**2 + h**2)
+# I_cm[2, 2] *= 6 * m * r**2
+# I_p = np.array(I_cm - m * Utils.S(r_p) @ Utils.S(r_p))
+
+# Inertia tensor (Box)
 I_cm = (1.0 / 12.0) * np.eye(3)
-I_cm[0, 0] *= m * (3 * r**2 + h**2)
-I_cm[1, 1] *= m * (3 * r**2 + h**2)
-I_cm[2, 2] *= 6 * m * r**2
+I_cm[0, 0] *= m * (w**2 + h**2)
+I_cm[1, 1] *= m * (l**2 + h**2)
+I_cm[2, 2] *= m * (l**2 + w**2)
 I_p = np.array(I_cm - m * Utils.S(r_p) @ Utils.S(r_p))
 
+
 mean_a, std_a = 0.0, 1.0
-o_hat = [rng.normal(mean_a, std_a, (10, )) for _ in range(N)]
+o_hat = [rng.normal(mean_a, std_a, (10,)) for _ in range(N)]
 o_true = np.array(
     [
         m,
@@ -55,9 +77,9 @@ o_true[1:4] = m * r_p
 o_i = o_true / N
 
 mean_r, std_r = mean_a, 2 * std_a
-r_hat = [rng.normal(mean_r, std_r, (3, )) for _ in range(N)]
+r_hat = [rng.normal(mean_r, std_r, (3,)) for _ in range(N)]
 
-k1= 35e-1
+k1 = 35e-1 / 500
 # k1 = 35e-3
 K_adap = k1 * block_diag(20e3 / N * np.eye(3), 25e3 / N * np.eye(3))
 
@@ -87,7 +109,6 @@ adaptiveSys = AdaptiveController(
     N,
     r_p,
 )
-
 
 # %%
 # Kinematic Controller
@@ -271,7 +292,7 @@ kt1, kt2, kt3 = 0.2, 1, 1.0
 
 # %%
 # Simulation
-dt = 1e-4
+dt = 1e-3
 T = 30.0
 delta = 1e-3
 ds = 1e-3
